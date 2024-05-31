@@ -1,0 +1,51 @@
+
+-- Create the User_Audit_Log table
+
+
+CREATE TABLE User_Audit_Log (
+    Audit_ID INT IDENTITY(1,1) PRIMARY KEY,
+    User_ID INT,
+    Action VARCHAR(10), -- INSERT, UPDATE, DELETE
+    User_Action_By VARCHAR(255),
+    Old_Value NVARCHAR(MAX),
+    New_Value NVARCHAR(MAX)
+);
+GO
+
+drop table User_Audit
+-- Create the new combined trigger
+CREATE TRIGGER User_Audit 
+ON [dbo].[whatsapp_user_details]
+AFTER INSERT, UPDATE, DELETE
+AS
+BEGIN
+    -- Insert audit records for INSERT operations
+    IF EXISTS (SELECT * FROM inserted) AND NOT EXISTS (SELECT * FROM deleted)
+    BEGIN
+        INSERT INTO User_Audit_Log (User_ID, Action, User_Action_By, New_Value)
+        SELECT i.user_id, 'INSERT', i.createdby, 
+               CONCAT('Created By: ', i.createdby, ', Created On: ', i.createdon, ', Username: ', i.user_name, ', Password: ', i.password, ', Status: ', i.status)
+        FROM inserted i;
+    END;
+
+    -- Insert audit records for UPDATE operations
+    IF EXISTS (SELECT * FROM inserted) AND EXISTS (SELECT * FROM deleted)
+    BEGIN
+        INSERT INTO User_Audit_Log (User_ID, Action, User_Action_By, Old_Value, New_Value)
+        SELECT i.user_id, 'UPDATE', i.updatedby, 
+               CONCAT('Old Created By: ', d.createdby, ', Old Created On: ', d.createdon, ', Old Username: ', d.user_name, ', Old Password: ', d.password, ', Old Status: ', d.status),
+               CONCAT('New Created By: ', i.createdby, ', New Created On: ', i.createdon, ', New Username: ', i.user_name, ', New Password: ', i.password, ', New Status: ', i.status)
+        FROM inserted i
+        INNER JOIN deleted d ON i.user_id = d.user_id;
+    END;
+
+    -- Insert audit records for DELETE operations
+    IF EXISTS (SELECT * FROM deleted) AND NOT EXISTS (SELECT * FROM inserted)
+    BEGIN
+        INSERT INTO User_Audit_Log (User_ID, Action, User_Action_By, Old_Value)
+        SELECT d.user_id, 'DELETE', d.updatedby, 
+               CONCAT('Username: ', d.user_name, ', Password: ', d.password, ', Status: ', d.status)
+        FROM deleted d;
+    END;
+END;
+GO
